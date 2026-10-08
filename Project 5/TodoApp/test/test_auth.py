@@ -3,7 +3,8 @@ from ..routers.auth import get_db, authenticate_user, create_access_token, SECRE
 from jose import jwt
 from datetime import timedelta
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, status
+from ..models import Users
 
 app.dependency_overrides[get_db] = override_get_db
 
@@ -58,8 +59,75 @@ async def test_get_current_user_missing_payload():
     assert excinfo.value.detail == 'Could not validate user.'
 
 
+def test_create_user():
+    request_data = {
+        'username': 'newuser',
+        'email': 'newuser@email.com',
+        'first_name': 'New',
+        'last_name': 'User',
+        'password': 'newpassword',
+        'role': 'user',
+        'phone_number': '(222)-222-2222',
+    }
+    db = TestingSessionLocal()
+    try:
+        response = client.post("/auth/", json=request_data)
+        assert response.status_code == status.HTTP_201_CREATED
+
+        model = db.query(Users).filter(Users.username == 'newuser').first()
+        assert model is not None
+        assert model.email == request_data['email']
+        assert model.first_name == request_data['first_name']
+        assert model.last_name == request_data['last_name']
+        assert model.role == request_data['role']
+        assert model.phone_number == request_data['phone_number']
+        assert model.hashed_password != request_data['password']
+        assert bcrypt_context.verify(request_data['password'], model.hashed_password)
+    finally:
+        db.query(Users).filter(Users.username == 'newuser').delete()
+        db.commit()
+        db.close()
 
 
+def test_create_user_missing_field():
+    response = client.post("/auth/", json={'username': 'incomplete'})
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
+def test_login_for_access_token(test_user):
+    response = client.post("/auth/token", data={'username': test_user.username,
+                                                'password': 'testpassword'})
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body['token_type'] == 'bearer'
 
+    decoded_token = jwt.decode(body['access_token'], SECRET_KEY, algorithms=[ALGORITHM])
+    assert decoded_token['sub'] == test_user.username
+    assert decoded_token['role'] == test_user.role
+
+
+def test_login_for_access_token_wrong_password(test_user):
+    response = client.post("/auth/token", data={'username': test_user.username,
+                                                'password': 'wrongpassword'})
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json() == {'detail': 'Could not validate user.'}
+
+
+def test_login_for_access_token_unknown_user():
+    response = client.post("/auth/token", data={'username': 'ghost', 'password': 'testpassword'})
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json() == {'detail': 'Could not validate user.'}
+
+
+### Pages ###
+
+def test_render_login_page():
+    response = client.get("/auth/login-page")
+    assert response.status_code == status.HTTP_200_OK
+    assert 'text/html' in response.headers['content-type']
+
+
+def test_render_register_page():
+    response = client.get("/auth/register-page")
+    assert response.status_code == status.HTTP_200_OK
+    assert 'text/html' in response.headers['content-type']
