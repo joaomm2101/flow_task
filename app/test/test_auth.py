@@ -66,7 +66,6 @@ def test_create_user():
         'first_name': 'New',
         'last_name': 'User',
         'password': 'newpassword',
-        'role': 'user',
         'phone_number': '(222)-222-2222',
     }
     db = TestingSessionLocal()
@@ -79,12 +78,35 @@ def test_create_user():
         assert model.email == request_data['email']
         assert model.first_name == request_data['first_name']
         assert model.last_name == request_data['last_name']
-        assert model.role == request_data['role']
+        assert model.role == 'user'
         assert model.phone_number == request_data['phone_number']
         assert model.hashed_password != request_data['password']
         assert bcrypt_context.verify(request_data['password'], model.hashed_password)
     finally:
         db.query(Users).filter(Users.username == 'newuser').delete()
+        db.commit()
+        db.close()
+
+
+def test_create_user_ignores_client_supplied_role():
+    request_data = {
+        'username': 'sneaky',
+        'email': 'sneaky@email.com',
+        'first_name': 'Sneaky',
+        'last_name': 'User',
+        'password': 'newpassword',
+        'role': 'admin',
+        'phone_number': '(333)-333-3333',
+    }
+    db = TestingSessionLocal()
+    try:
+        response = client.post("/auth/", json=request_data)
+        assert response.status_code == status.HTTP_201_CREATED
+
+        model = db.query(Users).filter(Users.username == 'sneaky').first()
+        assert model.role == 'user'
+    finally:
+        db.query(Users).filter(Users.username == 'sneaky').delete()
         db.commit()
         db.close()
 
