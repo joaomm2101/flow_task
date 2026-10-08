@@ -164,7 +164,6 @@
                 username: data.username,
                 first_name: data.first_name,
                 last_name: data.last_name,
-                role: data.role,
                 phone_number: data.phone_number,
                 password: data.password
             };
