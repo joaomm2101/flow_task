@@ -1,15 +1,14 @@
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
-from passlib.context import CryptContext
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_core.core_schema import GeneralPlainNoInfoSerializerFunction
 from sqlalchemy.orm import Session
 from starlette import status
 
 from ..database import SessionLocal
 from ..models import Todos, Users
-from .auth import get_current_user
+from .auth import bcrypt_context, get_current_user
 
 router = APIRouter(
        prefix='/user',
@@ -28,7 +27,25 @@ db_dependency = Annotated[Session, Depends(get_db)]
 user_dependency = Annotated[dict, Depends(get_current_user)]
 
 
-@router.get("/", status_code=status.HTTP_200_OK)
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    email: str
+    first_name: str
+    last_name: str
+    role: str
+    phone_number: str | None = None
+    is_active: bool | None = None
+
+
+class UserVerification(BaseModel):
+    password: str
+    new_password: str = Field(min_length=6)
+
+
+@router.get("/", status_code=status.HTTP_200_OK, response_model=UserResponse)
 async def read_user(user: user_dependency, db: db_dependency):
     if user is None:
         raise HTTPException(status_code=401, detail='Authentication Failed.')
@@ -36,16 +53,18 @@ async def read_user(user: user_dependency, db: db_dependency):
     return db.query(Users).filter(Users.id == user.get('id')).first()
 
 @router.put("/user/password", status_code=status.HTTP_200_OK)
-async def update_user_password(user: user_dependency, db: db_dependency, new_password: str = Query(min_length=6)):
+async def update_user_password(user: user_dependency, db: db_dependency, user_verification: UserVerification):
     if user is None:
         raise HTTPException(status_code=401, detail='Authentication Failed.')
         
     user_model = db.query(Users).filter(Users.id == user.get('id')).first()
     if user_model is None:
         raise HTTPException(status_code=404, detail='User not found.')
-    
-    hashed_password = CryptContext(schemes=['bcrypt']).hash(new_password)
-    user_model.hashed_password = hashed_password
+
+    if not bcrypt_context.verify(user_verification.password, user_model.hashed_password):
+        raise HTTPException(status_code=401, detail='Error on password change.')
+
+    user_model.hashed_password = bcrypt_context.hash(user_verification.new_password)
     db.add(user_model)
     db.commit()
     
