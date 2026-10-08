@@ -5,6 +5,7 @@ from typing import Annotated, TypeAlias
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import Request
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -94,6 +95,13 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
 @router.get("/login-page")
 def render_login_page(request: Request):
     return templates.TemplateResponse(request=request, name="login.html")
+
+
+@router.get("/logout")
+def logout():
+    response = RedirectResponse(url="/auth/login-page", status_code=status.HTTP_302_FOUND)
+    response.delete_cookie(key="access_token", path="/")
+    return response
 
 
 @router.get("/register-page")

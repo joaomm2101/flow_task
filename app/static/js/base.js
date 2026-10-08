@@ -16,21 +16,19 @@
             };
 
             try {
-                const response = await fetch('/todos/todo', {
+                const response = await authFetch('/todos/todo', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${getCookie('access_token')}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                if (!response) return;
 
                 if (response.ok) {
-                    form.reset(); // Clear the form
+                    window.location.href = '/todos/todo-page';
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.detail}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -58,29 +56,19 @@
         };
 
         try {
-            const token = getCookie('access_token');
-            console.log(token)
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-
-            console.log(`${todoId}`)
-
-            const response = await fetch(`/todos/todo/${todoId}`, {
+            const response = await authFetch(`/todos/todo/${todoId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            if (!response) return;
 
             if (response.ok) {
                 window.location.href = '/todos/todo-page'; // Redirect to the todo page
             } else {
                 // Handle error
                 const errorData = await response.json();
-                alert(`Error: ${errorData.detail}`);
+                alert(`Error: ${formatApiError(errorData)}`);
             }
         } catch (error) {
             console.error('Error:', error);
@@ -93,17 +81,10 @@
             const todoId = url.substring(url.lastIndexOf('/') + 1);
 
             try {
-                const token = getCookie('access_token');
-                if (!token) {
-                    throw new Error('Authentication token not found');
-                }
-
-                const response = await fetch(`/todos/todo/${todoId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                const response = await authFetch(`/todos/todo/${todoId}`, {
+                    method: 'DELETE'
                 });
+                if (!response) return;
 
                 if (response.ok) {
                     // Handle success
@@ -111,7 +92,7 @@
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.detail}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -148,15 +129,13 @@
                 if (response.ok) {
                     // Handle success (e.g., redirect to dashboard)
                     const data = await response.json();
-                    // Delete any cookies available
-                    logout();
-                    // Save token to cookie
-                    document.cookie = `access_token=${data.access_token}; path=/`;
-                    window.location.href = '/todos/todo-page'; // Change this to your desired redirect page
+                    // Save the JWT in the access_token cookie (same lifetime as the token: 20 min)
+                    document.cookie = `access_token=${encodeURIComponent(data.access_token)}; path=/; max-age=1200; SameSite=Lax`;
+                    window.location.href = '/todos/todo-page';
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.detail}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -183,14 +162,14 @@
             const payload = {
                 email: data.email,
                 username: data.username,
-                first_name: data.firstname,
-                last_name: data.lastname,
+                first_name: data.first_name,
+                last_name: data.last_name,
                 phone_number: data.phone_number,
                 password: data.password
             };
 
             try {
-                const response = await fetch('/auth', {
+                const response = await fetch('/auth/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -203,13 +182,22 @@
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.message}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
                 alert('An error occurred. Please try again.');
             }
         });
+    }
+
+    // FastAPI returns `detail` as a string, or as a list of objects on 422 validation errors
+    function formatApiError(errorData) {
+        const detail = errorData && errorData.detail;
+        if (Array.isArray(detail)) {
+            return detail.map((item) => `${(item.loc || []).slice(1).join('.')}: ${item.msg}`).join('\n');
+        }
+        return detail || 'Unexpected error';
     }
 
 
@@ -232,22 +220,34 @@
         return cookieValue;
     };
 
+    function clearAccessToken() {
+        document.cookie = 'access_token=; path=/; max-age=0; SameSite=Lax';
+    }
+
     function logout() {
-        // Get all cookies
-        const cookies = document.cookie.split(";");
-    
-        // Iterate through all cookies and delete each one
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i];
-            const eqPos = cookie.indexOf("=");
-            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-            // Set the cookie's expiry date to a past date to delete it
-            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-        }
-    
-        // Redirect to the login page
-        window.location.href = '/auth/login-page';
+        clearAccessToken();
+        // The server also expires the cookie and redirects to the login page
+        window.location.href = '/auth/logout';
     };
+
+    // fetch() with the JWT from the cookie. A missing/expired token ends the session
+    // and sends the user to the login page; in that case it resolves to null.
+    async function authFetch(url, options = {}) {
+        const token = getCookie('access_token');
+        if (!token) {
+            logout();
+            return null;
+        }
+        const response = await fetch(url, {
+            ...options,
+            headers: { ...options.headers, 'Authorization': `Bearer ${token}` }
+        });
+        if (response.status === 401) {
+            logout();
+            return null;
+        }
+        return response;
+    }
 
     const taskSearch = document.getElementById('taskSearch');
     if (taskSearch) {
