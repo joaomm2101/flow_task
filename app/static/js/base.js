@@ -181,8 +181,8 @@
             const payload = {
                 email: data.email,
                 username: data.username,
-                first_name: data.firstname,
-                last_name: data.lastname,
+                first_name: data.first_name,
+                last_name: data.last_name,
                 role: data.role,
                 phone_number: data.phone_number,
                 password: data.password
@@ -202,13 +202,22 @@
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.message}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
                 alert('An error occurred. Please try again.');
             }
         });
+    }
+
+    // FastAPI returns `detail` as a string, or as a list of objects on 422 validation errors
+    function formatApiError(errorData) {
+        const detail = errorData && errorData.detail;
+        if (Array.isArray(detail)) {
+            return detail.map((item) => `${(item.loc || []).slice(1).join('.')}: ${item.msg}`).join('\n');
+        }
+        return detail || 'Unexpected error';
     }
 
 
