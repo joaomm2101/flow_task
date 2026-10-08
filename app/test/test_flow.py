@@ -110,3 +110,23 @@ def test_api_rejects_expired_token_with_401(real_auth):
     response = client.get("/todos/", headers={"Authorization": f"Bearer {expired}"})
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.parametrize("path", ["/todos/", "/todos/todo/1", "/admin/todos", "/user/"])
+def test_api_routes_redirect_browser_navigation(real_auth, path):
+    client = TestClient(app, follow_redirects=False)
+
+    response = client.get(path, headers={"accept": "text/html,application/xhtml+xml"})
+
+    assert response.status_code == status.HTTP_302_FOUND
+    assert response.headers["location"] == "/"
+
+
+@pytest.mark.parametrize("headers", [{"accept": "application/json"}, {"accept": "*/*"}])
+def test_api_routes_keep_json_401_for_api_clients(real_auth, headers):
+    client = TestClient(app, follow_redirects=False)
+
+    response = client.get("/todos/", headers=headers)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json() == {"detail": "Not authenticated"}
