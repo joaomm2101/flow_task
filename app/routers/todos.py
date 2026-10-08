@@ -13,7 +13,7 @@ from ..database import SessionLocal
 from ..models import Todos
 from .auth import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix='/todos', tags=['todos'])
 templates = Jinja2Templates(
     directory=FilePath(__file__).resolve().parent.parent / "templates"
 )
