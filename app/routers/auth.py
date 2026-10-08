@@ -1,8 +1,11 @@
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Annotated, TypeAlias
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import Request
+from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
@@ -17,12 +20,15 @@ router = APIRouter(
     tags=['auth']
 )
 
+templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
+
 
 SECRET_KEY='259879hfjkdnbakjlhfg89p2q2uu9u2nkjrnjheehiufguieekpe'
 ALGORITHM='HS256'
 
 
 bycrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
+bcrypt_context = bycrypt_context
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl='auth/token')
 
@@ -62,9 +68,17 @@ def create_acess_token(username: str, user_id: int, role: str, expires_delta: ti
     return jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+create_access_token = create_acess_token
+
+
 
 
 async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Could not validate credentials.',
+        )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get('sub')
@@ -72,12 +86,20 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
         user_role: str = payload.get('role')
         if username is None or user_id is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
-            
-    
         return {'username': username, 'id': user_id, 'role': user_role}
 
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
+
+
+@router.get("/login-page")
+def render_login_page(request: Request):
+    return templates.TemplateResponse(request=request, name="login.html")
+
+
+@router.get("/register-page")
+def render_register_page(request: Request):
+    return templates.TemplateResponse(request=request, name="register.html")
         
 
 

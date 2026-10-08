@@ -1,0 +1,31 @@
+{% extends 'layout.html' %}
+{% block title %}Nova tarefa · Flowtask{% endblock %}
+{% block content %}
+
+<section class="editor-page"><a class="back-link" href="/todos/todo-page">← Voltar para tarefas</a>
+  <div class="editor-card">
+    <div class="form-heading"><p class="eyebrow">NOVA TAREFA</p><h1>O que precisa ser feito?</h1><p>Defina os detalhes para não perder o contexto depois.</p></div>
+      <form id="todoForm">
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" class="form-control" name="title" required>
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea class="form-control" rows="3" name="description" required></textarea>
+        </div>
+        <div class="form-group">
+          <label>Priority</label>
+          <select class="form-control" name="priority">
+            <option>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+            <option>5</option>
+          </select>
+        </div>
+        <p class="form-feedback" aria-live="polite"></p>
+        <div class="form-actions"><a href="/todos/todo-page" class="button button-secondary">Cancelar</a><button type="submit" class="button button-primary">Criar tarefa</button></div>
+      </form>
+  </div>
+</section>{% endblock %}

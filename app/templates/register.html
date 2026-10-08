@@ -1,0 +1,54 @@
+{% extends 'layout.html' %}
+{% block title %}Criar conta · Flowtask{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block content %}
+
+<section class="auth-shell"><div class="auth-intro"><a class="brand brand-light" href="/auth/login-page"><span class="brand-mark">✓</span><span>flowtask</span></a><div><p class="eyebrow">COMECE AGORA</p><h1>Organize o que importa.</h1><p class="intro-copy">Crie sua conta e tenha um espaço simples para transformar planos em progresso.</p></div></div><div class="auth-panel"><div class="form-card"><div class="form-heading"><p class="eyebrow">NOVA CONTA</p><h2>Crie sua conta</h2><p>Preencha seus dados para começar.</p></div>
+      <form id="registerForm">
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>Email</label>
+            <input type="text" class="form-control" name="email" required>
+          </div>
+          <div class="form-group col-md-6">
+            <label>Username</label>
+            <input type="text" class="form-control" name="username" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>First Name</label>
+            <input type="text" class="form-control" name="firstname" required>
+          </div>
+          <div class="form-group col-md-6">
+            <label>Last Name</label>
+            <input type="text" class="form-control" name="lastname" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group col-md-6">
+            <label>Role</label>
+            <input type="text" class="form-control" name="role" required>
+          </div>
+          <div class="form-group col-md-6">
+            <label>Phone Number</label>
+            <input type="text" class="form-control" name="phone_number" autocomplete="phone_number" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" class="form-control" name="password" autocomplete="new-password" required>
+        </div>
+        <div class="form-group">
+          <label>Verify Password</label>
+          <input type="password" class="form-control" name="password2" autocomplete="new-password" required>
+        </div>
+        <p class="form-feedback" aria-live="polite"></p><button type="submit" class="button button-primary button-block">Criar conta</button>
+      </form>
+    <p class="form-footer">Já tem uma conta? <a href="/auth/login-page">Entrar</a></p></div></div></section>{% endblock %}
+
+
+
+
+
+

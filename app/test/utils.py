@@ -6,7 +6,8 @@ from sqlalchemy.pool import StaticPool
 
 from ..database import Base
 from ..main import app
-from ..models import Todos
+from ..models import Todos, Users
+from ..routers.auth import bcrypt_context
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 
@@ -36,6 +37,30 @@ def override_get_current_user():
 
 client = TestClient(app)
 
+
+TestingSessionLocal = TestSessionLocal
+
+
+@pytest.fixture
+def test_user():
+    db = TestSessionLocal()
+    user = Users(
+        email="codingwithrobytest@email.com",
+        username="codingwithrobytest",
+        first_name="Eric",
+        last_name="Roby",
+        hashed_password=bcrypt_context.hash("testpassword"),
+        is_active=True,
+        role="admin",
+        phone_number="(111)-111-1111",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    yield user
+    db.delete(user)
+    db.commit()
+    db.close()
 
 
 @pytest.fixture

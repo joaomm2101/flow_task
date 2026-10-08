@@ -1,6 +1,9 @@
 from typing import Annotated, Optional
+from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request
+from fastapi.templating import Jinja2Templates
+from starlette.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from pydantic_core.core_schema import GeneralPlainNoInfoSerializerFunction
 from sqlalchemy.orm import Session
@@ -11,6 +14,9 @@ from ..models import Todos
 from .auth import get_current_user
 
 router = APIRouter()
+templates = Jinja2Templates(
+    directory=FilePath(__file__).resolve().parent.parent / "templates"
+)
 
 
 def get_db():
@@ -28,6 +34,55 @@ class TodoRequest(BaseModel):
     description: str = Field(min_length=3, max_length=100)
     priority: int = Field(gt=0, lt=6)
     complete: bool
+
+
+def redirect_to_login():
+    response = RedirectResponse(url="/auth/login-page", status_code=status.HTTP_302_FOUND)
+    response.delete_cookie(key="access_token")
+    return response
+
+
+@router.get("/todo-page")
+async def render_todo_page(request: Request, db: db_dependency):
+    try:
+        user = await get_current_user(request.cookies.get("access_token"))
+        if user is None:
+            return redirect_to_login()
+        todos = db.query(Todos).filter(Todos.owner_id == user.get("id")).all()
+        return templates.TemplateResponse(
+            request=request, name="todo.html", context={"todos": todos, "user": user}
+        )
+    except HTTPException:
+        return redirect_to_login()
+
+
+@router.get("/add-todo-page")
+async def render_add_todo_page(request: Request):
+    try:
+        user = await get_current_user(request.cookies.get("access_token"))
+        if user is None:
+            return redirect_to_login()
+        return templates.TemplateResponse(
+            request=request, name="add-todo.html", context={"user": user}
+        )
+    except HTTPException:
+        return redirect_to_login()
+
+
+@router.get("/edit-todo-page/{todo_id}")
+async def render_edit_todo_page(request: Request, todo_id: int, db: db_dependency):
+    try:
+        user = await get_current_user(request.cookies.get("access_token"))
+        if user is None:
+            return redirect_to_login()
+        todo = db.query(Todos).filter(Todos.id == todo_id).first()
+        return templates.TemplateResponse(
+            request=request,
+            name="edit-todo.html",
+            context={"todo": todo, "user": user},
+        )
+    except HTTPException:
+        return redirect_to_login()
 
 
 @router.get("/", status_code=status.HTTP_200_OK)
@@ -93,5 +148,3 @@ async def delete_todo(user: user_dependency, db: db_dependency, todo_id: int = P
     db.query(Todos).filter(Todos.id == todo_id).delete()
 
     db.commit()
-
-
