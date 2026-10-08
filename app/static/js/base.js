@@ -26,11 +26,11 @@
                 });
 
                 if (response.ok) {
-                    form.reset(); // Clear the form
+                    window.location.href = '/todos/todo-page';
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.detail}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -189,7 +189,7 @@
             };
 
             try {
-                const response = await fetch('/auth', {
+                const response = await fetch('/auth/', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
