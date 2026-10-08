@@ -148,11 +148,9 @@
                 if (response.ok) {
                     // Handle success (e.g., redirect to dashboard)
                     const data = await response.json();
-                    // Delete any cookies available
-                    logout();
-                    // Save token to cookie
-                    document.cookie = `access_token=${data.access_token}; path=/`;
-                    window.location.href = '/todos/todo-page'; // Change this to your desired redirect page
+                    // Save the JWT in the access_token cookie (same lifetime as the token: 20 min)
+                    document.cookie = `access_token=${encodeURIComponent(data.access_token)}; path=/; max-age=1200; SameSite=Lax`;
+                    window.location.href = '/todos/todo-page';
                 } else {
                     // Handle error
                     const errorData = await response.json();
