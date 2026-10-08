@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, TypeAlias
@@ -23,7 +24,10 @@ router = APIRouter(
 templates = Jinja2Templates(directory=Path(__file__).resolve().parent.parent / "templates")
 
 
-SECRET_KEY='259879hfjkdnbakjlhfg89p2q2uu9u2nkjrnjheehiufguieekpe'
+try:
+    SECRET_KEY = os.environ['SECRET_KEY']
+except KeyError:
+    raise RuntimeError('SECRET_KEY is not set. See .env.example.') from None
 ALGORITHM='HS256'
 
 

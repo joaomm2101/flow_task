@@ -154,11 +154,11 @@ alembic upgrade head                          # aplica as migrações
 alembic downgrade -1                          # desfaz a última
 ```
 
-Para usar PostgreSQL ou MySQL, altere `SQLALCHEMY_DATABASE_URL` em `database.py` (e remova o `connect_args` específico do SQLite) e use os scripts em `Database Scripts/` para criar as tabelas.
+Para usar PostgreSQL ou MySQL, defina `DATABASE_URL` (veja `.env.example`; remova o `connect_args` específico do SQLite, se houver) e use os scripts em `Database Scripts/` para criar as tabelas.
 
 ## 🔐 Aviso de segurança
 
-A `SECRET_KEY` do JWT está fixa no código (`routers/auth.py`) por ser um projeto didático. **Não reutilize essa chave em produção**: gere uma nova e carregue por variável de ambiente.
+A `SECRET_KEY` do JWT e a `DATABASE_URL` vêm de variáveis de ambiente (veja `app/.env.example`); a aplicação não inicia sem elas. Nunca versione valores reais.
 
 ```bash
 openssl rand -hex 32
