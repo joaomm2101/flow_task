@@ -14,16 +14,34 @@ def test_return_user(test_user):
     assert response.json()['last_name'] == 'Roby'
     assert response.json()['role'] == 'admin'
     assert response.json()['phone_number'] == '(111)-111-1111'
+    assert 'hashed_password' not in response.json()
 
 
 def test_change_password_success(test_user):
-    response = client.put("/user/user/password?new_password=newpassword")
+    response = client.put(
+        "/user/user/password",
+        json={"password": "testpassword", "new_password": "newpassword"},
+    )
     assert response.status_code == status.HTTP_200_OK
+
+    db = TestSessionLocal()
+    user = db.query(Users).filter(Users.username == test_user.username).first()
+    assert bcrypt_context.verify("newpassword", user.hashed_password)
+    db.close()
 
 
 def test_change_password_invalid_current_password(test_user):
-    response = client.put("/user/user/password?new_password=newpassword")
-    assert response.status_code == status.HTTP_200_OK
+    response = client.put(
+        "/user/user/password",
+        json={"password": "wrongpassword", "new_password": "newpassword"},
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json() == {"detail": "Error on password change."}
+
+
+def test_change_password_requires_current_password(test_user):
+    response = client.put("/user/user/password", json={"new_password": "newpassword"})
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 def test_change_phone_number_success(test_user):
