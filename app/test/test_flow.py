@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -75,3 +77,36 @@ def test_register_login_dashboard_create_todo(real_auth):
     response = client.get("/todos/todo-page")
     assert "Fluxo completo" in response.text
     assert "Nenhuma tarefa por aqui" not in response.text
+
+
+def test_logout_clears_cookie_and_redirects_to_login(real_auth):
+    client = TestClient(app, follow_redirects=False)
+    client.cookies.set("access_token", "whatever")
+
+    response = client.get("/auth/logout")
+
+    assert response.status_code == status.HTTP_302_FOUND
+    assert response.headers["location"] == "/auth/login-page"
+    assert "access_token=" in response.headers["set-cookie"]
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+def test_expired_token_redirects_to_login_and_clears_cookie(real_auth):
+    expired = auth.create_access_token("flowuser", 1, "user", timedelta(minutes=-1))
+    client = TestClient(app, follow_redirects=False)
+    client.cookies.set("access_token", expired)
+
+    response = client.get("/todos/todo-page")
+
+    assert response.status_code == status.HTTP_302_FOUND
+    assert response.headers["location"] == "/auth/login-page"
+    assert "Max-Age=0" in response.headers["set-cookie"]
+
+
+def test_api_rejects_expired_token_with_401(real_auth):
+    expired = auth.create_access_token("flowuser", 1, "user", timedelta(minutes=-1))
+    client = TestClient(app)
+
+    response = client.get("/todos/", headers={"Authorization": f"Bearer {expired}"})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED

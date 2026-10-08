@@ -16,14 +16,12 @@
             };
 
             try {
-                const response = await fetch('/todos/todo', {
+                const response = await authFetch('/todos/todo', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${getCookie('access_token')}`
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                if (!response) return;
 
                 if (response.ok) {
                     window.location.href = '/todos/todo-page';
@@ -58,29 +56,19 @@
         };
 
         try {
-            const token = getCookie('access_token');
-            console.log(token)
-            if (!token) {
-                throw new Error('Authentication token not found');
-            }
-
-            console.log(`${todoId}`)
-
-            const response = await fetch(`/todos/todo/${todoId}`, {
+            const response = await authFetch(`/todos/todo/${todoId}`, {
                 method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            if (!response) return;
 
             if (response.ok) {
                 window.location.href = '/todos/todo-page'; // Redirect to the todo page
             } else {
                 // Handle error
                 const errorData = await response.json();
-                alert(`Error: ${errorData.detail}`);
+                alert(`Error: ${formatApiError(errorData)}`);
             }
         } catch (error) {
             console.error('Error:', error);
@@ -93,17 +81,10 @@
             const todoId = url.substring(url.lastIndexOf('/') + 1);
 
             try {
-                const token = getCookie('access_token');
-                if (!token) {
-                    throw new Error('Authentication token not found');
-                }
-
-                const response = await fetch(`/todos/todo/${todoId}`, {
-                    method: 'DELETE',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                const response = await authFetch(`/todos/todo/${todoId}`, {
+                    method: 'DELETE'
                 });
+                if (!response) return;
 
                 if (response.ok) {
                     // Handle success
@@ -111,7 +92,7 @@
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.detail}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -154,7 +135,7 @@
                 } else {
                     // Handle error
                     const errorData = await response.json();
-                    alert(`Error: ${errorData.detail}`);
+                    alert(`Error: ${formatApiError(errorData)}`);
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -240,22 +221,34 @@
         return cookieValue;
     };
 
+    function clearAccessToken() {
+        document.cookie = 'access_token=; path=/; max-age=0; SameSite=Lax';
+    }
+
     function logout() {
-        // Get all cookies
-        const cookies = document.cookie.split(";");
-    
-        // Iterate through all cookies and delete each one
-        for (let i = 0; i < cookies.length; i++) {
-            const cookie = cookies[i];
-            const eqPos = cookie.indexOf("=");
-            const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
-            // Set the cookie's expiry date to a past date to delete it
-            document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-        }
-    
-        // Redirect to the login page
-        window.location.href = '/auth/login-page';
+        clearAccessToken();
+        // The server also expires the cookie and redirects to the login page
+        window.location.href = '/auth/logout';
     };
+
+    // fetch() with the JWT from the cookie. A missing/expired token ends the session
+    // and sends the user to the login page; in that case it resolves to null.
+    async function authFetch(url, options = {}) {
+        const token = getCookie('access_token');
+        if (!token) {
+            logout();
+            return null;
+        }
+        const response = await fetch(url, {
+            ...options,
+            headers: { ...options.headers, 'Authorization': `Bearer ${token}` }
+        });
+        if (response.status === 401) {
+            logout();
+            return null;
+        }
+        return response;
+    }
 
     const taskSearch = document.getElementById('taskSearch');
     if (taskSearch) {
