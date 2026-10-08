@@ -1,11 +1,10 @@
-{% include 'layout.html' %}
+{% extends 'layout.html' %}
+{% block title %}Nova tarefa · Flowtask{% endblock %}
+{% block content %}
 
-<div class="container">
-  <div class="card">
-    <div class="card-header">
-      Make a new todo
-    </div>
-    <div class="card-body">
+<section class="editor-page"><a class="back-link" href="/todos/todo-page">← Voltar para tarefas</a>
+  <div class="editor-card">
+    <div class="form-heading"><p class="eyebrow">NOVA TAREFA</p><h1>O que precisa ser feito?</h1><p>Defina os detalhes para não perder o contexto depois.</p></div>
       <form id="todoForm">
         <div class="form-group">
           <label>Title</label>
@@ -25,9 +24,8 @@
             <option>5</option>
           </select>
         </div>
-        <button type="submit" class="btn btn-primary"> Add new todo </button>
-        <a href="/todos/todo-page" class="btn btn-success">Back</a>
+        <p class="form-feedback" aria-live="polite"></p>
+        <div class="form-actions"><a href="/todos/todo-page" class="button button-secondary">Cancelar</a><button type="submit" class="button button-primary">Criar tarefa</button></div>
       </form>
-    </div>
   </div>
-</div>
+</section>{% endblock %}

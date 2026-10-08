@@ -249,3 +249,13 @@
         // Redirect to the login page
         window.location.href = '/auth/login-page';
     };
+
+    const taskSearch = document.getElementById('taskSearch');
+    if (taskSearch) {
+        taskSearch.addEventListener('input', function () {
+            const term = this.value.trim().toLowerCase();
+            document.querySelectorAll('.tasks-table tbody tr[data-task]').forEach((row) => {
+                row.hidden = !row.dataset.task.includes(term);
+            });
+        });
+    }

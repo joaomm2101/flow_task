@@ -1,11 +1,10 @@
-{% include 'layout.html' %}
+{% extends 'layout.html' %}
+{% block title %}Editar tarefa · Flowtask{% endblock %}
+{% block content %}
 
-<div class="container">
-  <div class="card">
-    <div class="card-header">
-      Let's edit your todo!
-    </div>
-    <div class="card-body">
+<section class="editor-page"><a class="back-link" href="/todos/todo-page">← Voltar para tarefas</a>
+  <div class="editor-card">
+    <div class="form-heading"><p class="eyebrow">EDITAR TAREFA</p><h1>Ajuste os detalhes</h1><p>Mantenha a sua lista atualizada.</p></div>
       <form id="editTodoForm">
         <div class="form-group">
           <label>Title</label>
@@ -25,18 +24,12 @@
             <option {% if todo.priority == 5 %} selected="selected" {% endif %}>5</option>
           </select>
         </div>
-        <div class="form-group form-check">
-          <input type="checkbox" class="form-check-input" name="complete" {% if todo.complete %} checked {% endif %}>
-          <label class="form-check-label">Complete</label>
-        </div>
-        <button type="submit" class="btn btn-primary">Edit your todo</button>
-        <button id="deleteButton" type="button" class="btn btn-danger">Delete</button>
-        <a href="/todos/todo-page" class="btn btn-success">Back</a>
+        <label class="check-field"><input type="checkbox" name="complete" {% if todo.complete %} checked {% endif %}><span>Marcar como concluída</span></label>
+        <p class="form-feedback" aria-live="polite"></p>
+        <div class="form-actions"><button id="deleteButton" type="button" class="button button-danger">Excluir</button><span class="action-spacer"></span><a href="/todos/todo-page" class="button button-secondary">Cancelar</a><button type="submit" class="button button-primary">Salvar alterações</button></div>
       </form>
-    </div>
   </div>
-</div>
-
+</section>{% endblock %}
 
 
 
