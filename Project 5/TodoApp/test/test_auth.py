@@ -91,7 +91,7 @@ def test_create_user():
 
 def test_create_user_missing_field():
     response = client.post("/auth/", json={'username': 'incomplete'})
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.status_code == 422
 
 
 def test_login_for_access_token(test_user):
