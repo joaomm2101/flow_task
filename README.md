@@ -164,11 +164,4 @@ A `SECRET_KEY` do JWT e a `DATABASE_URL` vêm de variáveis de ambiente (veja `a
 openssl rand -hex 32
 ```
 
-## 🙏 Créditos
 
-- Curso e código-base por **Eric Roby**.
-- Estrutura deste README inspirada em guias de boas práticas, como o [How to write a 4000 stars GitHub README](https://dev.to/daytona/how-to-write-a-4000-stars-github-readme-for-your-project-3167), e em READMEs de projetos similares, como [CodeV23/ToDoApp](https://github.com/CodeV23/ToDoApp).
-
-## 📄 Licença
-
-Projeto educacional, sem licença definida. Adicione um arquivo `LICENSE` (por exemplo, MIT) se quiser permitir reuso.
