@@ -1,6 +1,6 @@
 from .utils import *
 from ..routers.auth import get_db, authenticate_user, create_access_token, SECRET_KEY, ALGORITHM, get_current_user
-from jose import jwt
+import jwt
 from datetime import timedelta
 import pytest
 from fastapi import HTTPException, status
@@ -204,3 +204,34 @@ def test_create_user_rejects_weak_password(password):
     db = TestingSessionLocal()
     assert db.query(Users).filter(Users.username == 'weakpw').first() is None
     db.close()
+
+
+def _claims(**extra):
+    from datetime import datetime, timezone
+
+    return {'sub': 'testuser', 'id': 1, 'role': 'admin',
+            'exp': datetime.now(timezone.utc) + timedelta(minutes=5), **extra}
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_unsigned_none_algorithm_token():
+    token = jwt.encode(_claims(), key=None, algorithm='none')
+    with pytest.raises(HTTPException) as excinfo:
+        await get_current_user(token)
+    assert excinfo.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_token_signed_with_another_key():
+    token = jwt.encode(_claims(), 'another-secret-key-of-32-bytes-or-more!!', algorithm=ALGORITHM)
+    with pytest.raises(HTTPException) as excinfo:
+        await get_current_user(token)
+    assert excinfo.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_rejects_expired_token():
+    token = create_access_token('testuser', 1, 'admin', timedelta(minutes=-1))
+    with pytest.raises(HTTPException) as excinfo:
+        await get_current_user(token)
+    assert excinfo.value.status_code == 401
