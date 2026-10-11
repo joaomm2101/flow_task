@@ -59,17 +59,54 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  docker:
+    name: Docker build and smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate the compose files
+        run: |
+          printf 'POSTGRES_ADMIN_PASSWORD=x\nAPP_DB_PASSWORD=x\nSECRET_KEY=x\n' > .env
+          docker compose config -q
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml config -q
+
+      - name: Generate throwaway secrets
+        run: |
+          {
+            echo "POSTGRES_ADMIN_PASSWORD=$(openssl rand -hex 16)"
+            echo "APP_DB_PASSWORD=$(openssl rand -hex 16)"
+            echo "SECRET_KEY=$(openssl rand -hex 32)"
+          } > .env
+
+      - name: Build the image and start PostgreSQL + app
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build db app
+
+      - name: Smoke test (migrations, signup, login, CRUD, headers, CSRF)
+        run: scripts/smoke_test.sh http://127.0.0.1:8000
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v
+
   # Single, stable check name to mark as required in branch protection,
   # regardless of how the matrix above evolves.
   ci-success:
     name: CI passed
     if: always()
-    needs: [tests]
+    needs: [tests, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
         run: |
-          if [ "${{ needs.tests.result }}" != "success" ]; then
-            echo "tests job result: ${{ needs.tests.result }}"
+          echo "tests: ${{ needs.tests.result }}"
+          echo "docker: ${{ needs.docker.result }}"
+          if [ "${{ needs.tests.result }}" != "success" ] || [ "${{ needs.docker.result }}" != "success" ]; then
             exit 1
           fi

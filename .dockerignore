@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+*.db
+*.sqlite
+.env
+**/.env
+test-results.xml
+app/test
+backups
+docs
+.DS_Store
+.vscode

@@ -2,3 +2,8 @@
 test.db
 test-results.xml
 .venv
+
+# Local environment files (secrets)
+.env
+backups/
+.DS_Store
