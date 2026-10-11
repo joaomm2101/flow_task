@@ -138,6 +138,22 @@ jobs:
       - name: Smoke test (migrations, signup, login, CRUD, headers, CSRF)
         run: scripts/smoke_test.sh http://127.0.0.1:8000
 
+      - name: Backup and restore round trip
+        run: |
+          count() { docker compose exec -T db psql -U postgres -d flowtask -tAc "SELECT count(*) FROM users"; }
+          before="$(count)"
+          [ "$before" -ge 1 ] || { echo "expected the smoke test user to exist"; exit 1; }
+          scripts/backup.sh
+          # simulate a disaster, then restore from the dump
+          docker compose exec -T db psql -U postgres -d flowtask -c "DELETE FROM todos; DELETE FROM users"
+          [ "$(count)" = "0" ]
+          scripts/restore.sh --yes "$(ls -1t backups/flowtask-*.sql.gz | head -1)"
+          after="$(count)"
+          echo "users before=$before after=$after"
+          [ "$before" = "$after" ] || { echo "restore did not bring the data back"; exit 1; }
+          # the app role must still be able to read AND write the restored tables
+          scripts/smoke_test.sh http://127.0.0.1:8000
+
       - name: Show container logs on failure
         if: failure()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color
