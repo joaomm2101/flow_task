@@ -48,4 +48,4 @@ select = ["F", "E9", "B", "S", "PLE"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, share fixtures through `from .utils import *` and re-declare fixtures on purpose
-"app/test/**" = ["S101", "S105", "S106", "F401", "F403", "F405", "F811"]
+"app/test/**" = ["S101", "S105", "S106", "S603", "F401", "F403", "F405", "F811"]
