@@ -249,6 +249,11 @@
         return response;
     }
 
+    // Logout buttons (no inline onclick: the Content-Security-Policy forbids inline handlers)
+    document.querySelectorAll('[data-logout]').forEach((button) => {
+        button.addEventListener('click', logout);
+    });
+
     const taskSearch = document.getElementById('taskSearch');
     if (taskSearch) {
         taskSearch.addEventListener('input', function () {
