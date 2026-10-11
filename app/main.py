@@ -1,4 +1,7 @@
+import logging
 import os
+import time
+import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -6,7 +9,10 @@ from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
+from .database import SessionLocal
+from .observability import VALID_REQUEST_ID, configure_logging, request_id_var
 from .routers import admin, auth, todos, user
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -27,6 +33,8 @@ CONTENT_SECURITY_POLICY = "; ".join([
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
+logger = logging.getLogger("flowtask.request")
+
 
 def allowed_origin_hosts() -> set[str]:
     """Extra hosts (host[:port]) allowed to send state-changing requests, e.g. a separate frontend."""
@@ -45,11 +53,44 @@ def create_app(enable_docs: bool = False) -> FastAPI:
         openapi_url="/openapi.json" if enable_docs else None,
     )
 
+    configure_logging()
     app.mount(
         "/static",
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),
         name="static",
     )
+
+    @app.middleware("http")
+    async def request_context(request: Request, call_next):
+        """Innermost middleware: correlation id, one access-log line, and a generic 500 for
+        unhandled errors (details go to the log, never to the client)."""
+        incoming = request.headers.get("x-request-id", "")
+        request_id = incoming if VALID_REQUEST_ID.match(incoming) else uuid.uuid4().hex
+        token = request_id_var.set(request_id)
+        started = time.perf_counter()
+        try:
+            try:
+                response = await call_next(request)
+            except Exception:
+                logger.exception("unhandled error", extra={"method": request.method, "path": request.url.path})
+                response = JSONResponse(
+                    {"detail": "Internal server error.", "request_id": request_id}, status_code=500
+                )
+            response.headers["X-Request-ID"] = request_id
+            if not request.url.path.startswith("/static"):
+                logger.info(
+                    "request",
+                    extra={
+                        "method": request.method,
+                        "path": request.url.path,  # no query string: it may carry sensitive values
+                        "status": response.status_code,
+                        "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                        "client": request.client.host if request.client else None,
+                    },
+                )
+            return response
+        finally:
+            request_id_var.reset(token)
 
     @app.middleware("http")
     async def reject_cross_origin_writes(request: Request, call_next):
@@ -59,6 +100,10 @@ def create_app(enable_docs: bool = False) -> FastAPI:
         if request.method in UNSAFE_METHODS and origin is not None:
             origin_host = urlparse(origin).netloc
             if origin_host != request.headers.get("host") and origin_host not in allowed_origin_hosts():
+                logger.warning(
+                    "cross-origin write refused",
+                    extra={"method": request.method, "path": request.url.path, "origin": origin},
+                )
                 return JSONResponse({"detail": "Cross-origin request refused."}, status_code=403)
         return await call_next(request)
 
@@ -104,7 +149,19 @@ def create_app(enable_docs: bool = False) -> FastAPI:
 
     @app.get("/healthy")
     def healthy():
+        """Liveness: the process is up (does not touch the database)."""
         return {"status": "Healthy"}
+
+    @app.get("/ready")
+    def ready():
+        """Readiness: the database answers. 503 otherwise, without leaking why."""
+        try:
+            with SessionLocal() as db:
+                db.execute(text("SELECT 1"))
+        except Exception:
+            logger.exception("readiness check failed")
+            return JSONResponse({"status": "unavailable"}, status_code=503)
+        return {"status": "ready"}
 
     app.include_router(auth.router)
     app.include_router(todos.router)
