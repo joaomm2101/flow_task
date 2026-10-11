@@ -1,13 +1,14 @@
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_core.core_schema import GeneralPlainNoInfoSerializerFunction
 from sqlalchemy.orm import Session
 from starlette import status
 
 from ..database import SessionLocal
 from ..models import Todos, Users
+from ..security import validate_password_strength
 from .auth import bcrypt_context, get_current_user
 
 router = APIRouter(
@@ -42,7 +43,9 @@ class UserResponse(BaseModel):
 
 class UserVerification(BaseModel):
     password: str
-    new_password: str = Field(min_length=6)
+    new_password: str
+
+    _check_new_password = field_validator('new_password')(validate_password_strength)
 
 
 @router.get("/", status_code=status.HTTP_200_OK, response_model=UserResponse)

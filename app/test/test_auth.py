@@ -65,7 +65,7 @@ def test_create_user():
         'email': 'newuser@email.com',
         'first_name': 'New',
         'last_name': 'User',
-        'password': 'newpassword',
+        'password': 'newpassword1',
         'phone_number': '(222)-222-2222',
     }
     db = TestingSessionLocal()
@@ -94,7 +94,7 @@ def test_create_user_ignores_client_supplied_role():
         'email': 'sneaky@email.com',
         'first_name': 'Sneaky',
         'last_name': 'User',
-        'password': 'newpassword',
+        'password': 'newpassword1',
         'role': 'admin',
         'phone_number': '(333)-333-3333',
     }
@@ -122,7 +122,7 @@ def test_create_user_rejects_duplicate_username_or_email(overrides):
         'email': 'dupuser@email.com',
         'first_name': 'Dup',
         'last_name': 'User',
-        'password': 'newpassword',
+        'password': 'newpassword1',
         'phone_number': '(444)-444-4444',
     }
     db = TestingSessionLocal()
@@ -182,3 +182,25 @@ def test_render_register_page():
     response = client.get("/auth/register-page")
     assert response.status_code == status.HTTP_200_OK
     assert 'text/html' in response.headers['content-type']
+
+
+@pytest.mark.parametrize(
+    'password',
+    ['abc1', 'onlyletters', '12345678', 'a1' * 40],
+    ids=['too-short', 'no-digit', 'no-letter', 'over-72-bytes'],
+)
+def test_create_user_rejects_weak_password(password):
+    request_data = {
+        'username': 'weakpw',
+        'email': 'weakpw@email.com',
+        'first_name': 'Weak',
+        'last_name': 'Password',
+        'password': password,
+        'phone_number': '(555)-555-5555',
+    }
+    response = client.post("/auth/", json=request_data)
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    db = TestingSessionLocal()
+    assert db.query(Users).filter(Users.username == 'weakpw').first() is None
+    db.close()
