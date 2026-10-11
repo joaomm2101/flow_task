@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, TypeAlias
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import Request
 from fastapi.responses import RedirectResponse
@@ -38,7 +38,19 @@ ALGORITHM='HS256'
 bycrypt_context = CryptContext(schemes=['bcrypt'], deprecated='auto')
 bcrypt_context = bycrypt_context
 
-oauth2_bearer = OAuth2PasswordBearer(tokenUrl='auth/token')
+oauth2_bearer = OAuth2PasswordBearer(tokenUrl='auth/token', auto_error=False)
+
+ACCESS_TOKEN_COOKIE = 'access_token'
+ACCESS_TOKEN_LIFETIME = timedelta(minutes=20)
+
+
+def cookie_secure() -> bool:
+    """The session cookie is Secure (HTTPS only) unless COOKIE_SECURE=false, e.g. local http dev."""
+    return os.environ.get('COOKIE_SECURE', 'true').strip().lower() not in {'0', 'false', 'no'}
+
+
+def _cookie_attributes() -> dict:
+    return {'path': '/', 'httponly': True, 'samesite': 'lax', 'secure': cookie_secure()}
 
 
 class CreateUserRequest(BaseModel):
@@ -82,11 +94,17 @@ create_access_token = create_acess_token
 
 
 
-async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
+def get_request_token(request: Request, bearer: Annotated[str | None, Depends(oauth2_bearer)]):
+    """JWT from the Authorization header (API clients) or the HttpOnly cookie (browser)."""
+    return bearer or request.cookies.get(ACCESS_TOKEN_COOKIE)
+
+
+async def get_current_user(token: Annotated[str | None, Depends(get_request_token)]):
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Could not validate credentials.',
+            headers={'WWW-Authenticate': 'Bearer'},
         )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -109,7 +127,7 @@ def render_login_page(request: Request):
 @router.get("/logout")
 def logout():
     response = RedirectResponse(url="/auth/login-page", status_code=status.HTTP_302_FOUND)
-    response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key=ACCESS_TOKEN_COOKIE, **_cookie_attributes())
     return response
 
 
@@ -158,7 +176,7 @@ async def create_user(db: db_dependency, create_user_request: CreateUserRequest)
 
 @router.post("/token")
 async def login_for_acess_token(
-    request: Request, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency
+    request: Request, response: Response, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency
 ):
     ip = request.client.host if request.client else 'unknown'
     retry_after = login_rate_limiter.retry_after(ip, form_data.username)
@@ -175,6 +193,11 @@ async def login_for_acess_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
 
     login_rate_limiter.reset(ip, form_data.username)
-    token = create_acess_token(user.username, user.id, user.role, timedelta(minutes=20))
+    token = create_acess_token(user.username, user.id, user.role, ACCESS_TOKEN_LIFETIME)
+    # The browser keeps the token in an HttpOnly cookie, so scripts (and XSS) can't read it;
+    # the JSON body stays for API clients that send it back as a Bearer header.
+    response.set_cookie(
+        ACCESS_TOKEN_COOKIE, token, max_age=int(ACCESS_TOKEN_LIFETIME.total_seconds()), **_cookie_attributes()
+    )
 
     return {'access_token': token, 'token_type': 'bearer'}

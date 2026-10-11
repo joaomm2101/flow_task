@@ -127,10 +127,7 @@
                 });
 
                 if (response.ok) {
-                    // Handle success (e.g., redirect to dashboard)
-                    const data = await response.json();
-                    // Save the JWT in the access_token cookie (same lifetime as the token: 20 min)
-                    document.cookie = `access_token=${encodeURIComponent(data.access_token)}; path=/; max-age=1200; SameSite=Lax`;
+                    // The server set the HttpOnly access_token cookie; scripts never see the JWT
                     window.location.href = '/todos/todo-page';
                 } else {
                     // Handle error
@@ -204,44 +201,15 @@
 
 
 
-    // Helper function to get a cookie by name
-    function getCookie(name) {
-        let cookieValue = null;
-        if (document.cookie && document.cookie !== '') {
-            const cookies = document.cookie.split(';');
-            for (let i = 0; i < cookies.length; i++) {
-                const cookie = cookies[i].trim();
-                if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                    break;
-                }
-            }
-        }
-        return cookieValue;
-    };
-
-    function clearAccessToken() {
-        document.cookie = 'access_token=; path=/; max-age=0; SameSite=Lax';
-    }
-
     function logout() {
-        clearAccessToken();
-        // The server also expires the cookie and redirects to the login page
+        // The server expires the HttpOnly access_token cookie and redirects to the login page
         window.location.href = '/auth/logout';
     };
 
-    // fetch() with the JWT from the cookie. A missing/expired token ends the session
-    // and sends the user to the login page; in that case it resolves to null.
+    // fetch() for authenticated calls: the browser sends the HttpOnly session cookie by itself.
+    // A 401 (missing/expired session) ends the session and resolves to null.
     async function authFetch(url, options = {}) {
-        const token = getCookie('access_token');
-        if (!token) {
-            logout();
-            return null;
-        }
-        const response = await fetch(url, {
-            ...options,
-            headers: { ...options.headers, 'Authorization': `Bearer ${token}` }
-        });
+        const response = await fetch(url, { ...options, credentials: 'same-origin' });
         if (response.status === 401) {
             logout();
             return null;
