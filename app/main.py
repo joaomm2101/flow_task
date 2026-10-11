@@ -7,8 +7,6 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from .database import engine
-from .models import Base
 from .routers import admin, auth, todos, user
 from starlette import status
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -47,7 +45,6 @@ def create_app(enable_docs: bool = False) -> FastAPI:
         openapi_url="/openapi.json" if enable_docs else None,
     )
 
-    Base.metadata.create_all(bind=engine)
     app.mount(
         "/static",
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),

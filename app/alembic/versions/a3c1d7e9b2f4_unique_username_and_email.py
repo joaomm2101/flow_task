@@ -49,7 +49,8 @@ def upgrade() -> None:
                 f'Cannot add UNIQUE({column}): duplicate values exist in users: {values}. '
                 'Merge or rename these accounts, then run the migration again.'
             )
-        op.create_unique_constraint(f'uq_users_{column}', 'users', [column])
+        with op.batch_alter_table('users') as batch:  # batch mode: SQLite can't ALTER ... ADD CONSTRAINT
+            batch.create_unique_constraint(f'uq_users_{column}', [column])
 
 
 def downgrade() -> None:
@@ -57,4 +58,5 @@ def downgrade() -> None:
     existing = {c['name'] for c in inspector.get_unique_constraints('users')}
     for column in COLUMNS:
         if f'uq_users_{column}' in existing:
-            op.drop_constraint(f'uq_users_{column}', 'users', type_='unique')
+            with op.batch_alter_table('users') as batch:
+                batch.drop_constraint(f'uq_users_{column}', type_='unique')

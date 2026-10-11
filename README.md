@@ -103,7 +103,11 @@ cd "Project 5"
 uvicorn TodoApp.main:app --reload
 ```
 
-O banco SQLite (`todosapp.db`) é criado automaticamente na primeira execução.
+O schema **não é mais criado automaticamente**: antes da primeira execução (e a cada deploy) aplique as migrações, com `DATABASE_URL` definida:
+
+```bash
+cd app && alembic upgrade head
+```
 
 ### 4️⃣ Acessar
 
