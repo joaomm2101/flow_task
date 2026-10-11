@@ -111,6 +111,35 @@ def test_create_user_ignores_client_supplied_role():
         db.close()
 
 
+@pytest.mark.parametrize(
+    'overrides',
+    [{'email': 'other@email.com'}, {'username': 'dupuser2'}],
+    ids=['same-username', 'same-email'],
+)
+def test_create_user_rejects_duplicate_username_or_email(overrides):
+    base = {
+        'username': 'dupuser',
+        'email': 'dupuser@email.com',
+        'first_name': 'Dup',
+        'last_name': 'User',
+        'password': 'newpassword',
+        'phone_number': '(444)-444-4444',
+    }
+    db = TestingSessionLocal()
+    try:
+        assert client.post("/auth/", json=base).status_code == status.HTTP_201_CREATED
+
+        response = client.post("/auth/", json={**base, **overrides})
+
+        assert response.status_code == status.HTTP_409_CONFLICT
+        assert response.json() == {'detail': 'Username or email is already registered.'}
+        assert db.query(Users).filter(Users.username.in_(['dupuser', 'dupuser2'])).count() == 1
+    finally:
+        db.query(Users).filter(Users.username.in_(['dupuser', 'dupuser2'])).delete()
+        db.commit()
+        db.close()
+
+
 def test_create_user_missing_field():
     response = client.post("/auth/", json={'username': 'incomplete'})
     assert response.status_code == 422
