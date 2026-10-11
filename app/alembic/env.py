@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app import models  # noqa: E402
+from app.database import normalize_database_url  # noqa: E402
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
@@ -17,7 +18,7 @@ from alembic import context
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"].replace("%", "%%"))
+config.set_main_option("sqlalchemy.url", normalize_database_url(os.environ["DATABASE_URL"]).replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
