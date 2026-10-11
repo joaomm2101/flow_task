@@ -95,3 +95,62 @@ def test_limiter_truncates_huge_usernames():
     limiter = LoginRateLimiter(clock=FakeClock())
     limiter.record_failure('1.1.1.1', 'x' * 1_000_000)
     assert all(len(str(part)) <= 128 for key in limiter._failures for part in key)
+
+
+def test_flooding_with_unique_keys_cannot_wipe_an_active_lockout():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(max_per_user=3, max_per_ip=100, window_seconds=600, max_keys=100, clock=clock)
+    for _ in range(3):
+        limiter.record_failure('6.6.6.6', 'victim')
+    assert limiter.retry_after('6.6.6.6', 'victim') > 0
+
+    # a botnet floods the limiter with thousands of one-off (ip, username) keys
+    for i in range(5000):
+        clock.now += 0.01
+        limiter.record_failure(f'10.{i // 250}.{i % 250}.1', f'noise-{i}')
+
+    assert len(limiter._failures) <= 100
+    assert limiter.retry_after('6.6.6.6', 'victim') > 0  # the lockout survived
+
+
+def test_table_full_of_lockouts_does_not_grow_or_drop_them():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(max_per_user=1, max_per_ip=1, window_seconds=600, max_keys=10, clock=clock)
+    for i in range(5):  # 5 ips x (user key + ip key) = 10 keys, all blocking
+        limiter.record_failure(f'1.1.1.{i}', 'u')
+
+    for i in range(100):
+        limiter.record_failure(f'2.2.2.{i}', 'newcomer')
+
+    assert len(limiter._failures) == 10
+    assert all(limiter.retry_after(f'1.1.1.{i}', 'u') > 0 for i in range(5))
+
+
+def test_eviction_work_is_amortised_not_per_failure():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(max_per_user=5, max_per_ip=5, window_seconds=600, max_keys=1000, clock=clock)
+    batches = 0
+    original = limiter._evict_batch
+
+    def counting_evict():
+        nonlocal batches
+        batches += 1
+        original()
+
+    limiter._evict_batch = counting_evict
+
+    for i in range(10_000):
+        clock.now += 0.001
+        limiter.record_failure(f'3.{i // 65536}.{(i // 256) % 256}.{i % 256}', 'user')
+
+    # 20k key insertions at a cap of 1000 evict 100 keys per batch => ~200 batches, not ~20k
+    assert batches <= 300
+    assert len(limiter._failures) <= 1000
+
+
+def test_a_single_ip_cannot_create_unbounded_keys_through_the_endpoint(test_user):
+    for i in range(60):
+        client.post('/auth/token', data={'username': f'ghost-{i}', 'password': 'whatever1'})
+
+    # blocked after 20 failures: the remaining 40 requests are refused before recording anything
+    assert len(login_rate_limiter._failures) <= 20 + 1
