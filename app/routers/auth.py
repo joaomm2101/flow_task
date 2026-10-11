@@ -8,7 +8,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError
 from passlib.context import CryptContext
 from pydantic import BaseModel, field_validator
 from sqlalchemy.exc import IntegrityError
@@ -96,7 +97,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_bearer)]):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
         return {'username': username, 'id': user_id, 'role': user_role}
 
-    except JWTError:
+    except PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
 
 
