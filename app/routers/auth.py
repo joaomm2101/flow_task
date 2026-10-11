@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette import status
 
@@ -118,6 +119,15 @@ def render_register_page(request: Request):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_user(db: db_dependency, create_user_request: CreateUserRequest):
+    taken = db.query(Users).filter(
+        (Users.username == create_user_request.username) | (Users.email == create_user_request.email)
+    ).first()
+    if taken:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Username or email is already registered.',
+        )
+
     create_user_model = Users(
         email=create_user_request.email,
         username=create_user_request.username,
@@ -131,7 +141,15 @@ async def create_user(db: db_dependency, create_user_request: CreateUserRequest)
 
 
     db.add(create_user_model)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # Lost a race against a concurrent signup: the UNIQUE constraint caught it
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail='Username or email is already registered.',
+        )
 
 
 @router.post("/token")
