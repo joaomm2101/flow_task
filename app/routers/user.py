@@ -1,13 +1,12 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import BaseModel, ConfigDict, field_validator
-from pydantic_core.core_schema import GeneralPlainNoInfoSerializerFunction
 from sqlalchemy.orm import Session
 from starlette import status
 
 from ..database import SessionLocal
-from ..models import Todos, Users
+from ..models import Users
 from ..security import validate_password_strength
 from .auth import bcrypt_context, get_current_user
 
