@@ -154,6 +154,19 @@ jobs:
           # the app role must still be able to read AND write the restored tables
           scripts/smoke_test.sh http://127.0.0.1:8000
 
+          # same round trip with an encrypted backup (age) and permission checks
+          sudo apt-get install -y -qq age >/dev/null
+          age-keygen -o "$RUNNER_TEMP/age.key" 2>/dev/null
+          recipient="$(age-keygen -y "$RUNNER_TEMP/age.key")"
+          before="$(count)"
+          BACKUP_AGE_RECIPIENT="$recipient" scripts/backup.sh
+          enc="$(ls -1t backups/flowtask-*.sql.gz.age | head -1)"
+          [ "$(stat -c %a backups)" = "700" ] && [ "$(stat -c %a "$enc")" = "600" ] || { echo "backup permissions are too open"; exit 1; }
+          ! gunzip -c "$enc" >/dev/null 2>&1 || { echo "the encrypted backup is readable without the key"; exit 1; }
+          docker compose exec -T db psql -U postgres -d flowtask -c "DELETE FROM todos; DELETE FROM users"
+          AGE_IDENTITY_FILE="$RUNNER_TEMP/age.key" scripts/restore.sh --yes "$enc"
+          [ "$(count)" = "$before" ] || { echo "encrypted restore did not bring the data back"; exit 1; }
+
       - name: Show container logs on failure
         if: failure()
         run: docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --no-color

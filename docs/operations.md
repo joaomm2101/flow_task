@@ -78,6 +78,14 @@ Agende no `cron` do servidor (diário às 03:00):
 0 3 * * * cd /caminho/do/projeto && scripts/backup.sh >> backups/backup.log 2>&1
 ```
 
+**Os dumps contêm hashes de senha e dados pessoais.** O script já cria `backups/` com permissão `700` e cada arquivo com `600`, e só publica o arquivo quando o dump termina (uma falha no meio nunca deixa um backup parcial). Para criptografar em repouso, use [age](https://age-encryption.org): gere um par de chaves **em outra máquina**, guarde a chave privada fora do servidor e passe só a pública:
+
+```bash
+age-keygen -o age.key                        # na sua máquina; guarde age.key em local seguro
+BACKUP_AGE_RECIPIENT="age1..." scripts/backup.sh     # gera flowtask-<data>.sql.gz.age
+AGE_IDENTITY_FILE=age.key scripts/restore.sh backups/flowtask-<data>.sql.gz.age
+```
+
 Boas práticas: copie `backups/` para **fora do servidor** (outro provedor ou bucket com versionamento), pois um backup no mesmo disco não protege contra a perda do disco, e **teste a restauração** periodicamente.
 
 Restaurar (**destrutivo**: substitui o banco atual, e o script pede confirmação):
