@@ -62,3 +62,19 @@ def test_migrations_can_be_rolled_back_to_empty(db_url):
 
     names = set(sa.inspect(sa.create_engine(db_url)).get_table_names())
     assert "users" not in names and "todos" not in names
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ("postgresql://u:p@db:5432/flowtask", "postgresql+psycopg2://u:p@db:5432/flowtask"),
+        ("postgresql+psycopg2://u:p@db/x", "postgresql+psycopg2://u:p@db/x"),
+        ("postgresql+psycopg://u:p@db/x", "postgresql+psycopg://u:p@db/x"),  # explicit choice is respected
+        ("sqlite:///./test.db", "sqlite:///./test.db"),
+        ("postgresql://u:p%40ss%2Fword@db/x", "postgresql+psycopg2://u:p%40ss%2Fword@db/x"),  # special chars kept
+    ],
+)
+def test_postgres_driver_is_explicit_but_never_overrides_a_choice(given, expected):
+    from ..database import normalize_database_url
+
+    assert normalize_database_url(given) == expected
