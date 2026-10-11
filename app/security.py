@@ -32,10 +32,11 @@ class LoginRateLimiter:
     Memory and CPU are bounded against attackers who flood it with unique
     keys: an ip stops recording once it is blocked (so one ip can create at
     most ``max_per_ip`` user keys), expired keys are swept at most once per
-    ``window / 4``, and when ``max_keys`` is reached the stalest *unblocked*
-    keys are evicted in batches of 10% (amortised O(1) per failure). Keys that
-    are currently blocking someone are never evicted, so flooding the limiter
-    cannot be used to wipe a lockout.
+    ``window / 4``, and when ``max_keys`` is reached 10% of the table is evicted
+    in one pass (amortised O(1) per failure): stalest unblocked keys first, so
+    flooding with one-off keys cannot wipe a lockout. Only when the table is
+    full of live lockouts (each costs an attacker ``max_per_user`` failures)
+    are the ones closest to expiry dropped, so new keys are always tracked.
     """
 
     MAX_USERNAME_CHARS = 128  # longer names are truncated so keys stay small
@@ -84,10 +85,22 @@ class LoginRateLimiter:
         self._last_sweep = now
 
     def _evict_batch(self) -> None:
-        """Forget the stalest keys that are not blocking anyone."""
+        """Free a batch of slots in one O(n) pass (amortised O(1) per failure).
+
+        Stalest *unblocked* keys go first. Only if that doesn't free enough
+        (the table is full of live lockouts) do the lockouts with the least
+        time left go too: always freeing room means new keys keep being
+        tracked (never fail-open) and a full table can't force a rescan on
+        every failure.
+        """
         batch = max(1, self.max_keys // self.EVICT_FRACTION)
-        evictable = [k for k in self._failures if not self._is_blocked(k)]
-        for key in heapq.nsmallest(batch, evictable, key=lambda k: self._failures[k][-1]):
+        unblocked, blocked = [], []
+        for key in list(self._failures):
+            (blocked if self._is_blocked(key) else unblocked).append(key)
+        victims = heapq.nsmallest(batch, unblocked, key=lambda k: self._failures[k][-1])
+        if len(victims) < batch:
+            victims += heapq.nsmallest(batch - len(victims), blocked, key=lambda k: self._failures[k][0])
+        for key in victims:
             del self._failures[key]
 
     def _append(self, key: tuple, now: float) -> None:
@@ -95,8 +108,6 @@ class LoginRateLimiter:
         if events is None:
             if len(self._failures) >= self.max_keys:
                 self._evict_batch()
-            if len(self._failures) >= self.max_keys:
-                return  # table full of live lockouts: keep them, skip tracking this key
             events = self._failures[key] = deque(maxlen=self._limit(key))
         events.append(now)
 
