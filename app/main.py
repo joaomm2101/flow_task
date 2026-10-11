@@ -1,9 +1,10 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import engine
@@ -26,6 +27,12 @@ CONTENT_SECURITY_POLICY = "; ".join([
     "frame-ancestors 'none'",
 ])
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
+UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def allowed_origin_hosts() -> set[str]:
+    """Extra hosts (host[:port]) allowed to send state-changing requests, e.g. a separate frontend."""
+    return {h.strip() for h in os.environ.get("ALLOWED_ORIGIN_HOSTS", "").split(",") if h.strip()}
 
 
 def docs_enabled() -> bool:
@@ -46,6 +53,17 @@ def create_app(enable_docs: bool = False) -> FastAPI:
         StaticFiles(directory=Path(__file__).resolve().parent / "static"),
         name="static",
     )
+
+    @app.middleware("http")
+    async def reject_cross_origin_writes(request: Request, call_next):
+        """CSRF defence in depth on top of SameSite=Lax: browsers always send Origin on
+        cross-origin writes, so refuse any whose host is not ours."""
+        origin = request.headers.get("origin")
+        if request.method in UNSAFE_METHODS and origin is not None:
+            origin_host = urlparse(origin).netloc
+            if origin_host != request.headers.get("host") and origin_host not in allowed_origin_hosts():
+                return JSONResponse({"detail": "Cross-origin request refused."}, status_code=403)
+        return await call_next(request)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

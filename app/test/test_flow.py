@@ -140,7 +140,8 @@ def test_api_routes_keep_json_401_for_api_clients(real_auth, headers):
     response = client.get("/todos/", headers=headers)
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert response.json() == {"detail": "Not authenticated"}
+    assert response.json() == {"detail": "Could not validate credentials."}
+    assert response.headers["www-authenticate"] == "Bearer"
 
 
 def _login(client, data):
@@ -183,3 +184,75 @@ def test_edit_page_for_missing_todo_redirects_to_dashboard(real_auth):
 
     assert response.status_code == status.HTTP_302_FOUND
     assert response.headers["location"] == "/todos/todo-page"
+
+
+def test_login_sets_httponly_samesite_cookie_with_the_jwt(real_auth, monkeypatch):
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    client = TestClient(app, follow_redirects=False)
+    client.post("/auth/", json=USER)
+
+    response = client.post("/auth/token", data={"username": USER["username"], "password": USER["password"]})
+
+    cookie = response.headers["set-cookie"]
+    token = response.json()["access_token"]
+    assert cookie.startswith(f"access_token={token}")
+    assert "HttpOnly" in cookie and "Secure" in cookie
+    assert "SameSite=lax" in cookie and "Max-Age=1200" in cookie and "Path=/" in cookie
+
+
+def test_cookie_secure_flag_can_be_disabled_for_local_http(real_auth, monkeypatch):
+    monkeypatch.setenv("COOKIE_SECURE", "false")
+    client = TestClient(app, follow_redirects=False)
+    client.post("/auth/", json=USER)
+
+    response = client.post("/auth/token", data={"username": USER["username"], "password": USER["password"]})
+
+    assert "Secure" not in response.headers["set-cookie"]
+    assert "HttpOnly" in response.headers["set-cookie"]
+
+
+def test_api_accepts_the_session_cookie_without_authorization_header(real_auth):
+    client = TestClient(app, follow_redirects=False)
+    token = _login(client, USER)  # cookie only from here on
+
+    response = client.post(
+        "/todos/todo",
+        json={"title": "via cookie", "description": "no bearer header", "priority": 1, "complete": False},
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert client.get("/todos/").json()[0]["title"] == "via cookie"
+    assert token  # the JSON body still carries the token for API clients
+
+
+def test_cross_origin_write_with_session_cookie_is_refused(real_auth):
+    client = TestClient(app, follow_redirects=False)
+    _login(client, USER)
+    body = {"title": "csrf", "description": "forged", "priority": 1, "complete": False}
+
+    forged = client.post("/todos/todo", json=body, headers={"origin": "https://evil.example"})
+    null_origin = client.post("/todos/todo", json=body, headers={"origin": "null"})
+    same_origin = client.post("/todos/todo", json=body, headers={"origin": "http://testserver"})
+
+    assert forged.status_code == status.HTTP_403_FORBIDDEN
+    assert null_origin.status_code == status.HTTP_403_FORBIDDEN
+    assert same_origin.status_code == status.HTTP_201_CREATED
+    assert [t["title"] for t in client.get("/todos/").json()] == ["csrf"]  # only the legit one
+
+
+def test_allowed_origin_hosts_can_be_configured(real_auth, monkeypatch):
+    monkeypatch.setenv("ALLOWED_ORIGIN_HOSTS", "app.example.com")
+    client = TestClient(app, follow_redirects=False)
+    _login(client, USER)
+    body = {"title": "allowed", "description": "allowed host", "priority": 1, "complete": False}
+
+    response = client.post("/todos/todo", json=body, headers={"origin": "https://app.example.com"})
+
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+def test_logout_expires_the_cookie_with_matching_attributes(real_auth):
+    response = TestClient(app, follow_redirects=False).get("/auth/logout")
+
+    cookie = response.headers["set-cookie"]
+    assert "Max-Age=0" in cookie and "HttpOnly" in cookie and "Path=/" in cookie
