@@ -75,7 +75,15 @@ async def render_edit_todo_page(request: Request, todo_id: int, db: db_dependenc
         user = await get_current_user(request.cookies.get("access_token"))
         if user is None:
             return redirect_to_login()
-        todo = db.query(Todos).filter(Todos.id == todo_id).first()
+        todo = (
+            db.query(Todos)
+            .filter(Todos.id == todo_id)
+            .filter(Todos.owner_id == user.get("id"))
+            .first()
+        )
+        if todo is None:
+            # Missing and foreign todos get the same answer, so ids can't be probed
+            return RedirectResponse(url="/todos/todo-page", status_code=status.HTTP_302_FOUND)
         return templates.TemplateResponse(
             request=request,
             name="edit-todo.html",
