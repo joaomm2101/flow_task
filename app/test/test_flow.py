@@ -12,7 +12,7 @@ OTHER_USER = {
     "email": "otheruser@email.com",
     "first_name": "Other",
     "last_name": "User",
-    "password": "otherpassword",
+    "password": "otherpassword1",
     "role": "user",
     "phone_number": "(333)-333-3333",
 }
@@ -22,7 +22,7 @@ USER = {
     "email": "flowuser@email.com",
     "first_name": "Flow",
     "last_name": "User",
-    "password": "flowpassword",
+    "password": "flowpassword1",
     "role": "user",
     "phone_number": "(222)-222-2222",
 }

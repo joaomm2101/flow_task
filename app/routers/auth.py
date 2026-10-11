@@ -10,13 +10,14 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette import status
 
 from ..database import SessionLocal
 from ..models import Users
+from ..security import validate_password_strength
 
 router = APIRouter(
     prefix='/auth',
@@ -46,6 +47,8 @@ class CreateUserRequest(BaseModel):
     last_name: str
     password: str
     phone_number: str
+
+    _check_password = field_validator('password')(validate_password_strength)
 
 def get_db():
     db = SessionLocal()
