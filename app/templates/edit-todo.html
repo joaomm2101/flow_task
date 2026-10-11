@@ -26,7 +26,7 @@
         </div>
         <label class="check-field"><input type="checkbox" name="complete" {% if todo.complete %} checked {% endif %}><span>Marcar como concluída</span></label>
         <p class="form-feedback" aria-live="polite"></p>
-        <div class="form-actions"><button id="deleteButton" type="button" class="button button-danger">Excluir</button><span class="action-spacer"></span><a href="/todos/todo-page" class="button button-secondary">Cancelar</a><button type="submit" class="button button-primary">Salvar alterações</button></div>
+        <div class="form-actions"><button id="deleteButton" type="button" data-busy-lock class="button button-danger">Excluir</button><span class="action-spacer"></span><a href="/todos/todo-page" class="button button-secondary">Cancelar</a><button type="submit" class="button button-primary">Salvar alterações</button></div>
       </form>
   </div>
 </section>{% endblock %}

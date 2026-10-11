@@ -6,9 +6,11 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, Request
-from fastapi.exception_handlers import http_exception_handler
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 
 from .database import SessionLocal
@@ -32,6 +34,38 @@ CONTENT_SECURITY_POLICY = "; ".join([
 ])
 DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+TEMPLATES = Jinja2Templates(directory=Path(__file__).resolve().parent / "templates")
+
+# What a person sees for each error when a browser navigates to a bad URL (API clients get JSON).
+ERROR_PAGES = {
+    400: ("Requisição inválida", "Não foi possível entender o endereço solicitado."),
+    403: ("Acesso negado", "Você não tem permissão para acessar esta página."),
+    404: ("Página não encontrada", "O endereço que você tentou acessar não existe ou foi movido."),
+    405: ("Ação não permitida", "Este endereço não aceita esse tipo de acesso."),
+    429: ("Muitas tentativas", "Aguarde alguns minutos e tente novamente."),
+    500: ("Algo deu errado", "Tivemos um problema inesperado. Tente novamente em instantes."),
+    503: ("Serviço indisponível", "Estamos fora do ar por um momento. Tente novamente em instantes."),
+}
+
+
+def wants_html(request: Request) -> bool:
+    return "text/html" in request.headers.get("accept", "")
+
+
+def error_page(request: Request, status_code: int, headers: dict | None = None):
+    title, message = ERROR_PAGES.get(status_code, ERROR_PAGES[500] if status_code >= 500 else ERROR_PAGES[400])
+    return TEMPLATES.TemplateResponse(
+        request=request,
+        name="error.html",
+        context={
+            "status_code": status_code,
+            "title": title,
+            "message": message,
+            "request_id": request_id_var.get() if status_code >= 500 else None,
+        },
+        status_code=status_code,
+        headers=headers,
+    )
 
 logger = logging.getLogger("flowtask.request")
 
@@ -73,9 +107,12 @@ def create_app(enable_docs: bool = False) -> FastAPI:
                 response = await call_next(request)
             except Exception:
                 logger.exception("unhandled error", extra={"method": request.method, "path": request.url.path})
-                response = JSONResponse(
-                    {"detail": "Internal server error.", "request_id": request_id}, status_code=500
-                )
+                if wants_html(request):
+                    response = error_page(request, 500)
+                else:
+                    response = JSONResponse(
+                        {"detail": "Internal server error.", "request_id": request_id}, status_code=500
+                    )
             response.headers["X-Request-ID"] = request_id
             if not request.url.path.startswith("/static"):
                 logger.info(
@@ -132,14 +169,27 @@ def create_app(enable_docs: bool = False) -> FastAPI:
     async def browser_friendly_http_exception(request: Request, exc: StarletteHTTPException):
         # A browser navigating straight to an API URL sends no Authorization header and
         # accepts HTML: send it back to the app instead of showing raw JSON.
-        is_browser_navigation = "text/html" in request.headers.get("accept", "")
+        is_browser_navigation = wants_html(request)
         if (
             exc.status_code == status.HTTP_401_UNAUTHORIZED
             and is_browser_navigation
             and "authorization" not in request.headers
         ):
             return RedirectResponse(url="/", status_code=status.HTTP_302_FOUND)
+        if is_browser_navigation and exc.status_code in ERROR_PAGES and exc.status_code != 401:
+            return error_page(request, exc.status_code, headers=getattr(exc, "headers", None))
         return await http_exception_handler(request, exc)
+
+    @app.exception_handler(RequestValidationError)
+    async def browser_friendly_validation_error(request: Request, exc: RequestValidationError):
+        # e.g. /todos/edit-todo-page/abc typed into the address bar
+        if wants_html(request):
+            return error_page(request, 400)
+        return await request_validation_exception_handler(request, exc)
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return RedirectResponse(url="/static/favicon.svg", status_code=status.HTTP_301_MOVED_PERMANENTLY)
 
     @app.get("/", include_in_schema=False)
     def root(request: Request):
