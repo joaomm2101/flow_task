@@ -67,3 +67,31 @@ def test_login_endpoint_success_resets_counter(test_user):
     for _ in range(4):
         assert client.post('/auth/token', data=wrong).status_code == status.HTTP_401_UNAUTHORIZED
     assert client.post('/auth/token', data=right).status_code == status.HTTP_200_OK
+
+
+def test_limiter_memory_is_bounded_when_spraying_unique_usernames():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(max_per_user=5, max_per_ip=10_000, window_seconds=60, max_keys=50, clock=clock)
+
+    for i in range(1000):
+        limiter.record_failure('7.7.7.7', f'user-{i}')
+
+    assert len(limiter._failures) <= 51  # cap, plus the entry added right after a sweep
+
+
+def test_limiter_forgets_expired_keys_without_being_queried_again():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(window_seconds=60, max_keys=1000, clock=clock)
+    for i in range(20):
+        limiter.record_failure(f'10.0.0.{i}', 'someone')
+
+    clock.now += 120  # everything expired; nobody ever asks about those keys again
+    limiter.record_failure('10.9.9.9', 'new')
+
+    assert len(limiter._failures) == 2  # only the fresh (ip, user) and (ip,) keys remain
+
+
+def test_limiter_truncates_huge_usernames():
+    limiter = LoginRateLimiter(clock=FakeClock())
+    limiter.record_failure('1.1.1.1', 'x' * 1_000_000)
+    assert all(len(str(part)) <= 128 for key in limiter._failures for part in key)

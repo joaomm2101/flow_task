@@ -29,11 +29,17 @@ class LoginRateLimiter:
     it. Swap the storage for Redis if the app is scaled out.
     """
 
-    def __init__(self, max_per_user=5, max_per_ip=20, window_seconds=15 * 60, clock=time.monotonic):
+    MAX_USERNAME_CHARS = 128  # longer names are truncated so keys stay small
+
+    def __init__(
+        self, max_per_user=5, max_per_ip=20, window_seconds=15 * 60, max_keys=10_000, clock=time.monotonic
+    ):
         self.max_per_user = max_per_user
         self.max_per_ip = max_per_ip
         self.window = window_seconds
+        self.max_keys = max_keys
         self._clock = clock
+        self._last_sweep = clock()
         self._lock = Lock()
         self._failures: dict[tuple, deque] = defaultdict(deque)
 
@@ -47,11 +53,32 @@ class LoginRateLimiter:
             return deque()
         return events
 
+    def _user_key(self, ip: str, username: str) -> tuple:
+        return (ip, username.lower()[: self.MAX_USERNAME_CHARS])
+
+    def _sweep(self) -> None:
+        """Drop expired entries for every key, then bound the number of keys.
+
+        Without this, an attacker sending unique usernames would grow the
+        dict forever, because a key is otherwise only pruned when it is
+        looked up again.
+        """
+        now = self._clock()
+        cutoff = now - self.window
+        for key in [k for k, events in self._failures.items() if not events or events[-1] <= cutoff]:
+            del self._failures[key]
+        if len(self._failures) > self.max_keys:
+            # still over the cap: forget the keys whose latest failure is oldest
+            by_age = sorted(self._failures, key=lambda k: self._failures[k][-1])
+            for key in by_age[: len(self._failures) - self.max_keys]:
+                del self._failures[key]
+        self._last_sweep = now
+
     def retry_after(self, ip: str, username: str) -> int:
         """Seconds until a blocked caller may try again; 0 when not blocked."""
         with self._lock:
             waits = []
-            for key, limit in (((ip, username.lower()), self.max_per_user), ((ip,), self.max_per_ip)):
+            for key, limit in ((self._user_key(ip, username), self.max_per_user), ((ip,), self.max_per_ip)):
                 events = self._prune(key)
                 if len(events) >= limit:
                     waits.append(math.ceil(events[0] + self.window - self._clock()))
@@ -60,12 +87,14 @@ class LoginRateLimiter:
     def record_failure(self, ip: str, username: str) -> None:
         with self._lock:
             now = self._clock()
-            self._failures[(ip, username.lower())].append(now)
+            if len(self._failures) >= self.max_keys or now - self._last_sweep >= self.window / 4:
+                self._sweep()
+            self._failures[self._user_key(ip, username)].append(now)
             self._failures[(ip,)].append(now)
 
     def reset(self, ip: str, username: str) -> None:
         with self._lock:
-            self._failures.pop((ip, username.lower()), None)
+            self._failures.pop(self._user_key(ip, username), None)
 
     def clear(self) -> None:
         with self._lock:
