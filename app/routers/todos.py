@@ -1,11 +1,10 @@
-from typing import Annotated, Optional
+from typing import Annotated
 from pathlib import Path as FilePath
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.templating import Jinja2Templates
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel, Field
-from pydantic_core.core_schema import GeneralPlainNoInfoSerializerFunction
 from sqlalchemy.orm import Session
 from starlette import status
 

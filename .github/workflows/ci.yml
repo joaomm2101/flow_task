@@ -59,6 +59,57 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Ruff (pyflakes, bugbear, bandit, pylint errors)
+        run: uvx ruff check app --output-format github
+
+  audit:
+    name: Dependency audit (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Audit the locked dependencies for known vulnerabilities
+        run: |
+          uv export --frozen --no-hashes --no-emit-project --no-emit-workspace > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip --strict
+
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks scans the commits of the push / pull request
+
+      - name: Scan the new commits for leaked secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   docker:
     name: Docker build and smoke test
     runs-on: ubuntu-latest
@@ -100,13 +151,13 @@ jobs:
   ci-success:
     name: CI passed
     if: always()
-    needs: [tests, docker]
+    needs: [tests, lint, audit, secrets, docker]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
         run: |
-          echo "tests: ${{ needs.tests.result }}"
-          echo "docker: ${{ needs.docker.result }}"
-          if [ "${{ needs.tests.result }}" != "success" ] || [ "${{ needs.docker.result }}" != "success" ]; then
+          results='${{ toJSON(needs) }}'
+          echo "$results"
+          if echo "$results" | grep -E '"result": "(failure|cancelled|skipped)"'; then
             exit 1
           fi

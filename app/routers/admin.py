@@ -1,8 +1,6 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
-from pydantic import BaseModel, Field
-from pydantic_core.core_schema import GeneralPlainNoInfoSerializerFunction
+from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 from starlette import status
 

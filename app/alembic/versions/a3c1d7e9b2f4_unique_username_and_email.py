@@ -39,8 +39,9 @@ def upgrade() -> None:
     for column in COLUMNS:
         if _already_unique(inspector, column):
             continue
+        # `column` comes from the constant COLUMNS tuple above, never from user input
         duplicates = bind.execute(sa.text(
-            f'SELECT {column}, COUNT(*) FROM users WHERE {column} IS NOT NULL '
+            f'SELECT {column}, COUNT(*) FROM users WHERE {column} IS NOT NULL '  # noqa: S608
             f'GROUP BY {column} HAVING COUNT(*) > 1'
         )).fetchall()
         if duplicates:

@@ -1,5 +1,5 @@
 import os
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, TypeAlias
 
@@ -40,7 +40,7 @@ bcrypt_context = bycrypt_context
 
 oauth2_bearer = OAuth2PasswordBearer(tokenUrl='auth/token', auto_error=False)
 
-ACCESS_TOKEN_COOKIE = 'access_token'
+ACCESS_TOKEN_COOKIE = 'access_token'  # noqa: S105 - a cookie name, not a secret
 ACCESS_TOKEN_LIFETIME = timedelta(minutes=20)
 
 
@@ -116,7 +116,9 @@ async def get_current_user(token: Annotated[str | None, Depends(get_request_toke
         return {'username': username, 'id': user_id, 'role': user_role}
 
     except PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.'
+        ) from None  # don't chain: the PyJWT message may describe why the token failed
 
 
 @router.get("/login-page")
@@ -171,7 +173,7 @@ async def create_user(db: db_dependency, create_user_request: CreateUserRequest)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail='Username or email is already registered.',
-        )
+        ) from None  # the DB error text is not for clients
 
 
 @router.post("/token")
@@ -200,4 +202,4 @@ async def login_for_acess_token(
         ACCESS_TOKEN_COOKIE, token, max_age=int(ACCESS_TOKEN_LIFETIME.total_seconds()), **_cookie_attributes()
     )
 
-    return {'access_token': token, 'token_type': 'bearer'}
+    return {'access_token': token, 'token_type': 'bearer'}  # noqa: S105 - OAuth2 token type, not a secret
