@@ -36,4 +36,5 @@ mv "$partial" "$file"
 trap - EXIT
 echo "backup written: $file ($(du -h "$file" | cut -f1))"
 
-ls -1t backups/flowtask-*.sql.gz backups/flowtask-*.sql.gz.age 2>/dev/null | tail -n +"$((KEEP + 1))" | xargs -r rm -f --
+# `|| true`: ls exits 2 when nothing matches, which pipefail would turn into a failed backup
+{ ls -1t backups/flowtask-*.sql.gz* 2>/dev/null || true; } | tail -n +"$((KEEP + 1))" | xargs -r rm -f --
