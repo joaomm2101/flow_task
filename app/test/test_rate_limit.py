@@ -113,17 +113,56 @@ def test_flooding_with_unique_keys_cannot_wipe_an_active_lockout():
     assert limiter.retry_after('6.6.6.6', 'victim') > 0  # the lockout survived
 
 
-def test_table_full_of_lockouts_does_not_grow_or_drop_them():
+def test_full_table_of_lockouts_keeps_tracking_new_keys_and_stays_bounded():
     clock = FakeClock()
     limiter = LoginRateLimiter(max_per_user=1, max_per_ip=1, window_seconds=600, max_keys=10, clock=clock)
     for i in range(5):  # 5 ips x (user key + ip key) = 10 keys, all blocking
+        clock.now += 1
         limiter.record_failure(f'1.1.1.{i}', 'u')
 
-    for i in range(100):
-        limiter.record_failure(f'2.2.2.{i}', 'newcomer')
+    clock.now += 1
+    limiter.record_failure('2.2.2.2', 'newcomer')  # must not be silently ignored (no fail-open)
 
-    assert len(limiter._failures) == 10
-    assert all(limiter.retry_after(f'1.1.1.{i}', 'u') > 0 for i in range(5))
+    assert limiter.retry_after('2.2.2.2', 'newcomer') > 0
+    assert len(limiter._failures) <= 10
+    # the dropped lockouts are the ones closest to expiry (the oldest), the latest survive
+    assert limiter.retry_after('1.1.1.4', 'u') > 0
+    assert limiter.retry_after('1.1.1.0', 'u') == 0
+
+
+def test_attacker_filling_the_table_with_lockouts_cannot_stop_new_attackers_being_limited():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(max_per_user=3, max_per_ip=3, window_seconds=600, max_keys=50, clock=clock)
+    for i in range(200):  # botnet burns 3 failures per ip to fill the table with live lockouts
+        clock.now += 0.01
+        for _ in range(3):
+            limiter.record_failure(f'8.8.{i // 250}.{i % 250}', 'x')
+    assert len(limiter._failures) <= 50
+
+    for _ in range(3):  # an unrelated attacker now guesses a victim's password
+        limiter.record_failure('5.5.5.5', 'victim')
+
+    assert limiter.retry_after('5.5.5.5', 'victim') > 0
+
+
+def test_full_table_does_not_rescan_on_every_failure():
+    clock = FakeClock()
+    limiter = LoginRateLimiter(max_per_user=1, max_per_ip=1, window_seconds=600, max_keys=1000, clock=clock)
+    batches = 0
+    original = limiter._evict_batch
+
+    def counting_evict():
+        nonlocal batches
+        batches += 1
+        original()
+
+    limiter._evict_batch = counting_evict
+    for i in range(5000):  # every new key is a live lockout, so nothing is "unblocked" to evict
+        clock.now += 0.001
+        limiter.record_failure(f'4.{i // 65536}.{(i // 256) % 256}.{i % 256}', 'u')
+
+    assert batches <= 120  # ~10k insertions / 100 per batch, not ~9k scans
+    assert len(limiter._failures) <= 1000
 
 
 def test_eviction_work_is_amortised_not_per_failure():
