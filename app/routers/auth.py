@@ -17,7 +17,7 @@ from starlette import status
 
 from ..database import SessionLocal
 from ..models import Users
-from ..security import validate_password_strength
+from ..security import login_rate_limiter, validate_password_strength
 
 router = APIRouter(
     prefix='/auth',
@@ -156,15 +156,24 @@ async def create_user(db: db_dependency, create_user_request: CreateUserRequest)
 
 
 @router.post("/token")
-async def login_for_acess_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency):
+async def login_for_acess_token(
+    request: Request, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: db_dependency
+):
+    ip = request.client.host if request.client else 'unknown'
+    retry_after = login_rate_limiter.retry_after(ip, form_data.username)
+    if retry_after:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail='Too many failed login attempts. Try again later.',
+            headers={'Retry-After': str(retry_after)},
+        )
 
     user = authenticate_user(form_data.username, form_data.password, db)
     if not user:
+        login_rate_limiter.record_failure(ip, form_data.username)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Could not validate credentials.')
-        
+
+    login_rate_limiter.reset(ip, form_data.username)
     token = create_acess_token(user.username, user.id, user.role, timedelta(minutes=20))
 
     return {'access_token': token, 'token_type': 'bearer'}
-
-
-    
