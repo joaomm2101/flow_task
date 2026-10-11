@@ -1,13 +1,84 @@
-    // Add Todo JS
+    // ---------------------------------------------------------------------------
+    // Form helpers. Messages are shown inline in the form's .form-feedback element
+    // (always via textContent, never innerHTML).
+    // ---------------------------------------------------------------------------
+    function showFeedback(form, message) {
+        const feedback = form.querySelector('.form-feedback');
+        if (feedback) {
+            feedback.textContent = message;
+            feedback.hidden = !message;
+        }
+    }
+
+    function setBusy(form, busy) {
+        form.querySelectorAll('button[type="submit"], button[data-busy-lock]').forEach((button) => {
+            button.disabled = busy;
+        });
+        form.setAttribute('aria-busy', busy ? 'true' : 'false');
+    }
+
+    // FastAPI returns `detail` as a string, or as a list of objects on 422 validation errors.
+    async function describeError(response, overrides = {}) {
+        let data = null;
+        try {
+            data = await response.json();
+        } catch (error) {
+            // non-JSON body (e.g. a proxy error page): fall through to the generic messages
+        }
+        if (overrides[response.status]) return overrides[response.status];
+
+        const detail = data && data.detail;
+        switch (response.status) {
+            case 403: return 'Ação não permitida.';
+            case 404: return 'Tarefa não encontrada.';
+            case 409: return 'Usuário ou e-mail já cadastrado.';
+            case 429: return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+            case 422:
+                if (Array.isArray(detail)) {
+                    if (detail.some((item) => (item.loc || []).includes('password') || (item.loc || []).includes('new_password'))) {
+                        return 'A senha deve ter de 8 a 72 caracteres, com pelo menos uma letra e um número.';
+                    }
+                    return detail.map((item) => `${(item.loc || []).slice(1).join('.')}: ${item.msg}`).join(' · ');
+                }
+                break;
+            default:
+        }
+        if (response.status >= 500) {
+            const code = data && data.request_id ? ` (código: ${data.request_id})` : '';
+            return `Erro no servidor. Tente novamente em instantes.${code}`;
+        }
+        return typeof detail === 'string' ? detail : 'Não foi possível concluir a ação.';
+    }
+
+    // Runs `action` (returns a fetch Response or null) for a form: clears old feedback, locks the
+    // submit button against double clicks, shows errors inline. Resolves to the Response when it
+    // was ok. On success the button stays locked: the caller navigates away.
+    async function runForm(form, action, errorOverrides = {}) {
+        showFeedback(form, '');
+        setBusy(form, true);
+        try {
+            const response = await action();
+            if (!response) return null; // session ended: authFetch is already redirecting
+            if (response.ok) return response;
+            showFeedback(form, await describeError(response, errorOverrides));
+        } catch (error) {
+            console.error('Error:', error);
+            showFeedback(form, 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.');
+        }
+        setBusy(form, false);
+        return null;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Add todo
+    // ---------------------------------------------------------------------------
     const todoForm = document.getElementById('todoForm');
     if (todoForm) {
         todoForm.addEventListener('submit', async function (event) {
             event.preventDefault();
 
             const form = event.target;
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
-
+            const data = Object.fromEntries(new FormData(form).entries());
             const payload = {
                 title: data.title,
                 description: data.description,
@@ -15,144 +86,92 @@
                 complete: false
             };
 
-            try {
-                const response = await authFetch('/todos/todo', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                if (!response) return;
-
-                if (response.ok) {
-                    window.location.href = '/todos/todo-page';
-                } else {
-                    // Handle error
-                    const errorData = await response.json();
-                    alert(`Error: ${formatApiError(errorData)}`);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('An error occurred. Please try again.');
-            }
+            const response = await runForm(form, () => authFetch('/todos/todo', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }));
+            if (response) window.location.href = '/todos/todo-page';
         });
     }
 
-    // Edit Todo JS
+    // ---------------------------------------------------------------------------
+    // Edit / delete todo
+    // ---------------------------------------------------------------------------
     const editTodoForm = document.getElementById('editTodoForm');
     if (editTodoForm) {
+        const todoId = window.location.pathname.substring(window.location.pathname.lastIndexOf('/') + 1);
+
         editTodoForm.addEventListener('submit', async function (event) {
-        event.preventDefault();
-        const form = event.target;
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
-        var url = window.location.pathname;
-        const todoId = url.substring(url.lastIndexOf('/') + 1);
+            event.preventDefault();
 
-        const payload = {
-            title: data.title,
-            description: data.description,
-            priority: parseInt(data.priority),
-            complete: data.complete === "on"
-        };
+            const form = event.target;
+            const data = Object.fromEntries(new FormData(form).entries());
+            const payload = {
+                title: data.title,
+                description: data.description,
+                priority: parseInt(data.priority),
+                complete: data.complete === 'on'
+            };
 
-        try {
-            const response = await authFetch(`/todos/todo/${todoId}`, {
+            const response = await runForm(form, () => authFetch(`/todos/todo/${todoId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
-            });
-            if (!response) return;
-
-            if (response.ok) {
-                window.location.href = '/todos/todo-page'; // Redirect to the todo page
-            } else {
-                // Handle error
-                const errorData = await response.json();
-                alert(`Error: ${formatApiError(errorData)}`);
-            }
-        } catch (error) {
-            console.error('Error:', error);
-            alert('An error occurred. Please try again.');
-        }
-    });
-
-        document.getElementById('deleteButton').addEventListener('click', async function () {
-            var url = window.location.pathname;
-            const todoId = url.substring(url.lastIndexOf('/') + 1);
-
-            try {
-                const response = await authFetch(`/todos/todo/${todoId}`, {
-                    method: 'DELETE'
-                });
-                if (!response) return;
-
-                if (response.ok) {
-                    // Handle success
-                    window.location.href = '/todos/todo-page'; // Redirect to the todo page
-                } else {
-                    // Handle error
-                    const errorData = await response.json();
-                    alert(`Error: ${formatApiError(errorData)}`);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('An error occurred. Please try again.');
-            }
+            }));
+            if (response) window.location.href = '/todos/todo-page';
         });
 
-        
+        const deleteButton = document.getElementById('deleteButton');
+        if (deleteButton) {
+            deleteButton.addEventListener('click', async function () {
+                if (!window.confirm('Excluir esta tarefa? Essa ação não pode ser desfeita.')) return;
+
+                const response = await runForm(editTodoForm, () => authFetch(`/todos/todo/${todoId}`, {
+                    method: 'DELETE'
+                }));
+                if (response) window.location.href = '/todos/todo-page';
+            });
+        }
     }
 
-    // Login JS
+    // ---------------------------------------------------------------------------
+    // Login
+    // ---------------------------------------------------------------------------
     const loginForm = document.getElementById('loginForm');
     if (loginForm) {
         loginForm.addEventListener('submit', async function (event) {
             event.preventDefault();
 
             const form = event.target;
-            const formData = new FormData(form);
-
             const payload = new URLSearchParams();
-            for (const [key, value] of formData.entries()) {
+            for (const [key, value] of new FormData(form).entries()) {
                 payload.append(key, value);
             }
 
-            try {
-                const response = await fetch('/auth/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: payload.toString()
-                });
-
-                if (response.ok) {
-                    // The server set the HttpOnly access_token cookie; scripts never see the JWT
-                    window.location.href = '/todos/todo-page';
-                } else {
-                    // Handle error
-                    const errorData = await response.json();
-                    alert(`Error: ${formatApiError(errorData)}`);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('An error occurred. Please try again.');
-            }
+            const response = await runForm(form, () => fetch('/auth/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: payload.toString()
+            }), { 401: 'Usuário ou senha inválidos.' });
+            // The server set the HttpOnly access_token cookie; scripts never see the JWT
+            if (response) window.location.href = '/todos/todo-page';
         });
     }
 
-    // Register JS
+    // ---------------------------------------------------------------------------
+    // Register
+    // ---------------------------------------------------------------------------
     const registerForm = document.getElementById('registerForm');
     if (registerForm) {
         registerForm.addEventListener('submit', async function (event) {
             event.preventDefault();
 
             const form = event.target;
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
+            const data = Object.fromEntries(new FormData(form).entries());
 
             if (data.password !== data.password2) {
-                alert("Passwords do not match");
+                showFeedback(form, 'As senhas não conferem.');
                 return;
             }
 
@@ -165,42 +184,18 @@
                 password: data.password
             };
 
-            try {
-                const response = await fetch('/auth/', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.ok) {
-                    window.location.href = '/auth/login-page';
-                } else {
-                    // Handle error
-                    const errorData = await response.json();
-                    alert(`Error: ${formatApiError(errorData)}`);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('An error occurred. Please try again.');
-            }
+            const response = await runForm(form, () => fetch('/auth/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }));
+            if (response) window.location.href = '/auth/login-page';
         });
     }
 
-    // FastAPI returns `detail` as a string, or as a list of objects on 422 validation errors
-    function formatApiError(errorData) {
-        const detail = errorData && errorData.detail;
-        if (Array.isArray(detail)) {
-            return detail.map((item) => `${(item.loc || []).slice(1).join('.')}: ${item.msg}`).join('\n');
-        }
-        return detail || 'Unexpected error';
-    }
-
-
-
-
-
+    // ---------------------------------------------------------------------------
+    // Session
+    // ---------------------------------------------------------------------------
     function logout() {
         // The server expires the HttpOnly access_token cookie and redirects to the login page
         window.location.href = '/auth/logout';
