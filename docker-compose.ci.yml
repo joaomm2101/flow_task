@@ -1,0 +1,8 @@
+# CI/local smoke-test override: publish the app on plain http and drop Caddy.
+#   docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d --build db app
+services:
+  app:
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      COOKIE_SECURE: "false" # the smoke test talks plain http
