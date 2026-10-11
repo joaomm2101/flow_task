@@ -1,4 +1,3 @@
-from app.src import app
 from fastapi.testclient import TestClient
 from fastapi import status
 

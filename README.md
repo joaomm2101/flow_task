@@ -175,6 +175,7 @@ docker compose up -d --build
 ├── scripts/               # smoke_test.sh, backup.sh, restore.sh
 ├── docs/operations.md     # guia de operação
 ├── Dockerfile · docker-compose.yml
+├── pyproject.toml · uv.lock   # dependências (produção e grupo dev)
 └── .github/workflows/ci.yml
 ```
 

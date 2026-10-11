@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
@@ -7,7 +6,6 @@ from sqlalchemy.ext.declarative import declarative_base
 
 
 
-DATABASE_PATH = Path(__file__).resolve().parent / 'todosapp.db'
 
 
 def normalize_database_url(url: str) -> str:
