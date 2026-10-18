@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build: resolve and install the locked dependencies into /opt/venv ----
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 RUN pip install --no-cache-dir "uv>=0.5"
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/opt/venv
 WORKDIR /build
@@ -9,7 +9,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project --no-dev
 
 # ---- runtime: no compilers, no uv, non-root ----
-FROM python:3.13-slim
+FROM python:3.14-slim
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
